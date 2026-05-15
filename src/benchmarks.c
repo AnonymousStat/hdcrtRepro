@@ -322,3 +322,94 @@ SEXP _FZW_Test(SEXP _X, SEXP _Param)
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+double _GCtest0(double *y, double *x, int p, int n){
+	int i,j,k;
+	double tmp, Tn=0.0, trS2=0.0;
+
+	for(i=1;i<n;i++){
+		for(j=0;j<i;j++){
+			tmp = 0.0;
+			for(k=0;k<p;k++){
+				tmp	+= x[k*n+i]*x[k*n+j];
+			}
+			tmp *= y[i]*y[j];
+			Tn 	+= tmp;
+			trS2 += tmp*tmp;
+		}
+	}
+	Tn *= 2.0/n;
+	trS2 *= 2.0/(n*(n-1));
+	return(Tn/sqrt(2*trS2));
+}
+
+double _GCtest(double *y, double *x, double *psi, int p, int n){
+	int i,j,k;
+	double tmp, Tn=0.0, trS2=0.0;
+
+	for(i=1;i<n;i++){
+		for(j=0;j<i;j++){
+			tmp = 0.0;
+			for(k=0;k<p;k++){
+				tmp	+= x[k*n+i]*x[k*n+j];
+			}
+			tmp *= y[i]*y[j]*psi[i]*psi[j];
+			Tn 	+= tmp;
+			trS2 += tmp*tmp;
+		}
+	}
+	Tn *= 2.0/n;
+	trS2 *= 2.0/(n*(n-1));
+	return(Tn/sqrt(2*trS2));
+}
+
+
+
+
+
+
+SEXP GCtest_(SEXP X_, SEXP Y_, SEXP PSI_, SEXP DIM_)
+{
+	// dimensions
+	int *dims 		= INTEGER(DIM_);
+	int n     		= dims[0];
+	int p     		= dims[1];
+	int ispsi  		= dims[2];
+
+	// Pointers
+	double *x 		= REAL(X_);
+	double *y  		= REAL(Y_);
+	double *psi 	= REAL(PSI_);
+
+	// Outcome
+	SEXP rTn;
+	PROTECT(rTn 		= allocVector(REALSXP, 1));
+
+	if(ispsi==0){
+		REAL(rTn)[0] = _GCtest0(y, x, p, n);
+	}
+	else{
+		REAL(rTn)[0] = _GCtest(y, x, psi, p, n);
+	}
+
+	UNPROTECT(1);
+	return rTn;
+
+}

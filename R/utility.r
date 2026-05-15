@@ -1544,7 +1544,7 @@ cgztest = function(X, y, maxabsy = exp(10))
     tmp = sqrt(2*fit$tr_sigma)/nrow(X)
     y0 = y-mean(y)
     X0 = t(t(X)-colMeans(X))
-    sigma2 <- RidgeVar::VAR_RCV(y0, X0)$sigma2
+    sigma2 <- VAR_RCV(y0, X0)$sigma2
     
     Tn  = fit$test / (sigma2*tmp)
     
@@ -2170,5 +2170,494 @@ hdcrpt_pathway <- function(pathway, y, x, status, eps = 0.001, gamma = 0.4) {
 
     return(cr_sigmoid)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#' Random projection global test
+#'
+#' Implements a random projection-based global test for high-dimensional linear
+#' regression models.
+#'
+#' @param x A numeric covariate matrix with rows corresponding to observations
+#'   and columns corresponding to covariates.
+#' @param y A numeric response vector.
+#' @param rho A numeric value specifying the projection ratio. Default is `0.4`.
+#' @param Pk An optional projection matrix. If `NULL`, a random Gaussian
+#'   projection matrix is generated internally when projection is needed.
+#'
+#' @return A list containing:
+#' \item{Tn}{The standardized test statistic.}
+#' \item{pvals}{The p-value of the test.}
+#' \item{rho}{The projection ratio used in the test.}
+#'
+#' @details
+#' This function implements a random projection-based global test for testing
+#' whether the regression coefficients of `x` are zero. If the number of
+#' covariates is smaller than `rho * n`, the test is computed without random
+#' projection. Otherwise, the covariates are projected to a lower-dimensional
+#' space using either the user-provided projection matrix `Pk` or a randomly
+#' generated Gaussian projection matrix.
+#'
+#' The core test statistic is computed by C routines registered in the package
+#' and then standardized using the normal approximation.
+#'
+#' @examples
+#' x <- matrix(rnorm(100 * 50), 100, 50)
+#' y <- rnorm(100)
+#' res <- pvalrp(x, y, rho = 0.4)
+#' res$pvals
+#'
+#' @importFrom stats rnorm pnorm
+#' @useDynLib hdcrtRepro, .registration = TRUE
+#' @export
+pvalrp <- function(x, y, rho = 0.4, Pk = NULL){
+	n = nrow(x)
+	p = ncol(x)
+	if(is.null(n)) n = length(x)
+	if(is.null(p)) p = 1
+
+
+	if(p < rho*n){
+		dims = c(n,p)
+		Tn 	<- .Call("RPtest0",
+					as.numeric(x),
+					as.numeric(y),
+					as.integer(dims),
+                    PACKAGE = "hdcrtRepro"
+				)
+		rho = p/n
+	}
+	else{
+		if(is.null(Pk)){
+			k 	= ceiling(rho*n)
+			Pk 	= matrix(rnorm((k*p),0,1), nrow = p, ncol = k)
+		}
+		else{
+			k 	= ncol(Pk)
+			rho = k/n
+		}
+		dims = c(n,p,k)
+		Tn 	<- .Call("RPtest",
+					as.numeric(x),
+					as.numeric(y),
+					as.numeric(Pk),
+					as.integer(dims),
+                    PACKAGE = "hdcrtRepro"
+				)
+	}
+	Tk = (Tn-1) / sqrt(2/(n*rho*(1-rho)))
+
+	pvalue = 1 - pnorm(Tk)
+	return(list(Tn = Tk, pvals = pvalue, rho = rho))
+
+}
+
+
+
+
+
+
+
+
+
+#' Guo and Chen high-dimensional generalized linear model test
+#'
+#' Implements the high-dimensional global test of Guo and Chen (2016) for
+#' generalized linear regression models.
+#'
+#' @param x A numeric covariate matrix with rows corresponding to observations
+#'   and columns corresponding to covariates of interest.
+#' @param y A numeric response vector.
+#' @param z An optional numeric matrix of control covariates. If `NULL`, no
+#'   control covariates are adjusted for. Default is `NULL`.
+#' @param family A character string specifying the generalized linear model
+#'   family. Available options are `"gaussian"`, `"binomial"`, and `"poisson"`.
+#'   Default is `"gaussian"`.
+#' @param resids An optional numeric vector of residuals. If provided, these
+#'   residuals are used directly in the test. Default is `NULL`.
+#' @param psi An optional numeric vector of weights used in the test statistic.
+#'   If `NULL`, it is set to a vector of ones. Default is `NULL`.
+#'
+#' @return A list containing:
+#' \item{Tn}{The standardized test statistic.}
+#' \item{pvals}{The p-value of the test.}
+#'
+#' @details
+#' This function tests the global null hypothesis that the coefficients of the
+#' covariates of interest `x` are zero in a generalized linear regression model.
+#' If `resids` is not provided, residuals are computed internally. When control
+#' covariates `z` are provided, a generalized linear model of `y` on `z` is first
+#' fitted using `glm()`, and response residuals are extracted. When `z = NULL`,
+#' simple null residuals are used according to the specified family.
+#'
+#' The core test statistic is computed by a C routine registered in the package.
+#'
+#' @references
+#' Guo, B. and Chen, S. X. (2016). Tests for high dimensional generalized linear
+#' models. \emph{Journal of the Royal Statistical Society: Series B}, 78,
+#' 1079--1102.
+#'
+#' Chen, J., Li, Q., and Chen, H. Y. (2023). Testing generalized linear models
+#' with high-dimensional nuisance parameters. \emph{Biometrika}, 110, 83--99.
+#'
+#' @examples
+#' x <- matrix(rnorm(100 * 20), 100, 20)
+#' y <- rnorm(100)
+#' res <- pvalgc(x, y, family = "gaussian")
+#' res$pvals
+#'
+#' @importFrom stats glm residuals pnorm rnorm
+#' @useDynLib hdcrtRepro, .registration = TRUE
+#' @export
+pvalgc <- function(x, y, z = NULL, family = "gaussian", resids = NULL, psi = NULL){
+	# High-dimensional testing of coefficient in linear regressions.
+	if(!(family %in% c('gaussian', 'binomial','poisson'))){
+		stop("family must be one of {'gaussian', 'binomial', 'poisson'} !")
+	}
+	n 	= length(y)
+	p 	= ifelse(is.null(ncol(x)), 1, ncol(x))
+
+	if(is.null(resids)){
+		if(is.null(z)){
+			if(family=='gaussian'){
+				resids  = y
+			}
+			else if(family == 'binomial'){
+				resids  = y - 0.5
+			}
+			else if(family == 'poisson'){
+				resids  = y - 1
+			}
+			else{
+				stop("family must be one of {'gaussian', 'binomial', 'poisson'} !")
+			}
+		}
+		else{
+			z 		= z
+			fitglm 	= glm(y~z, family = family)
+			resids 	= residuals(fitglm, type = "response")
+		}
+	}
+	if(is.null(psi)){
+		psi     = rep(1, n)
+		ispsi   = 0
+	}
+	else{
+		ispsi = 1
+	}
+
+
+
+	dims 	= c(n, p, ispsi)
+	Tn		= .Call("GCtest_",
+					as.numeric(x),
+					as.numeric(resids),
+					as.numeric(psi),
+					as.integer(dims)
+			)
+	pvals 	= pnorm(Tn, lower.tail = F)
+
+	return(list(Tn = Tn, pvals = pvals))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+#' Chen, Li, and Chen high-dimensional nuisance test
+#'
+#' Implements a high-dimensional global test for generalized linear models in
+#' the presence of high-dimensional control variables.
+#'
+#' @param x A numeric covariate matrix with rows corresponding to observations
+#'   and columns corresponding to covariates of interest.
+#' @param y A numeric response vector.
+#' @param z An optional numeric matrix of high-dimensional control covariates.
+#'   If `NULL`, no control covariates are adjusted for. Default is `NULL`.
+#' @param family A character string specifying the generalized linear model
+#'   family. Available options are `"gaussian"`, `"binomial"`, and `"poisson"`.
+#'   Default is `"gaussian"`.
+#' @param resids An optional numeric vector of residuals. If provided, these
+#'   residuals are used directly in the test. Default is `NULL`.
+#' @param psi An optional numeric vector of weights used in the test statistic.
+#'   If `NULL`, it is set to a vector of ones. Default is `NULL`.
+#'
+#' @return A list containing:
+#' \item{Tn}{The absolute value of the standardized test statistic.}
+#' \item{pvals}{The two-sided p-value of the test.}
+#'
+#' @details
+#' This function tests the global null hypothesis that the coefficients of the
+#' covariates of interest `x` are zero while adjusting for possibly
+#' high-dimensional control covariates `z`.
+#'
+#' If `resids` is not provided, residuals are computed internally. 
+#' The nuisance effect of `z` is estimated by cross-validated lasso 
+#' using `glmnet::cv.glmnet()`. If `z = NULL`, null residuals
+#' are constructed according to the specified family.
+#'
+#' The core test statistic is computed by a C routine registered in the package.
+#'
+#' @references
+#' Guo, B. and Chen, S. X. (2016). Tests for high dimensional generalized linear
+#' models. \emph{Journal of the Royal Statistical Society: Series B}, 78,
+#' 1079--1102.
+#'
+#' Chen, J., Li, Q., and Chen, H. Y. (2023). Testing generalized linear models
+#' with high-dimensional nuisance parameters. \emph{Biometrika}, 110, 83--99.
+#'
+#' @examples
+#' x <- matrix(rnorm(100 * 20), 100, 20)
+#' z <- matrix(rnorm(100 * 30), 100, 30)
+#' y <- rnorm(100)
+#' res <- pvalclc(x, y, z = z, family = "gaussian")
+#' res$pvals
+#'
+#' @importFrom glmnet cv.glmnet
+#' @importFrom stats pnorm rnorm
+#' @useDynLib hdcrtRepro, .registration = TRUE
+#' @export
+pvalclc <- function(x, y, z=NULL, family = "gaussian", resids = NULL, psi = NULL){
+	# High-dimensional testing of coefficient in linear regressions in presence of high-dimensional control factors.
+	if(!(family %in% c('gaussian', 'binomial','poisson'))){
+		stop("family must be one of {'gaussian', 'binomial', 'poisson'} !")
+	}
+	n 	= length(y)
+	p 	= ifelse(is.null(ncol(x)), 1, ncol(x))
+
+	if(is.null(resids)){
+		if(is.null(z)){
+			if(family=='gaussian'){
+				resids  = y
+			}
+			else if(family == 'binomial'){
+				resids  = y - 0.5
+			}
+			else if(family == 'poisson'){
+				resids  = y - 1
+			}
+			else{
+				stop("family must be one of {'gaussian', 'binomial', 'poisson'} !")
+			}
+		}
+		else {
+			z 		= z
+			fitglm 	= cv.glmnet(z, y, family = family, type.measure="mse")
+			betahat = coef(fitglm)
+			mu 		= betahat[1] + z %*% betahat[-1]
+
+			if(family=='gaussian'){
+				resids	<- y - mu
+			}
+			else if(family == 'binomial'){
+				resids	<- y - 1/(1+exp(-mu))
+			}
+			else if(family == 'poisson'){
+				resids	<- y - exp(mu)
+			}
+			else{
+				stop("family must be one of {'gaussian', 'binomial', 'poisson'} !")
+			}
+		}
+	}
+	if(is.null(psi)){
+		psi     = rep(1, n)
+		ispsi   = 0
+	}
+	else{
+		ispsi = 1
+	}
+
+
+	dims 	= c(n, p, ispsi)
+	Tn		= .Call("GCtest_",
+				as.numeric(x),
+				as.numeric(resids),
+				as.numeric(psi),
+				as.integer(dims)
+			)
+	pvals 	= pnorm(abs(Tn), lower.tail = F)
+
+	return(list(Tn = abs(Tn), pvals = pvals))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#' Refitted cross-validation variance estimation
+#'
+#' Estimates the residual variance in a high-dimensional linear model using
+#' refitted cross-validation.
+#'
+#' @param y A numeric response vector of length `n`.
+#' @param x A numeric design matrix with rows corresponding to observations and
+#'   columns corresponding to covariates.
+#'
+#' @return A list containing:
+#' \item{sigma2}{The estimated residual variance.}
+#'
+#' @details
+#' This function implements the refitted cross-validation variance estimator of
+#' Fan et al. (2012). The data are split into two parts. A lasso model is fitted
+#' on one part, and the selected variables are refitted on the other part to
+#' estimate the residual variance. The procedure is then repeated in the reverse
+#' direction, and the two variance estimates are averaged.
+#'
+#' @references
+#' Fan, J., Guo, S., and Hao, N. (2012). Variance estimation using refitted
+#' cross-validation in ultrahigh dimensional regression. \emph{Journal of the
+#' Royal Statistical Society: Series B}, 74, 37--65.
+#'
+#' @examples
+#' n <- 80
+#' p <- 100
+#' beta <- c(sqrt(0.1 / p) * rep(1, p / 2), rep(0, p / 2))
+#' eps <- rnorm(n)
+#' x <- matrix(rnorm(n * p), n, p)
+#' y <- x %*% beta + eps
+#' fit <- VAR_RCV(y, x)
+#' fit$sigma2
+#'
+#' @importFrom glmnet cv.glmnet
+#' @importFrom stats rnorm
+#' @export
+VAR_RCV <- function(y,x){
+  if(is.null(x)) stop("x must not be NA")
+  if(is.null(y)) stop("y must not be NA")
+  n = nrow(x)
+  p = ncol(x)
+  if(is.null(p)) p = 1
+  half = ceiling(n/2)
+  x1 = x[1:half,]
+  y1 = y[1:half]
+  x2 = x[-c(1:half),]
+  y2 = y[-c(1:half)]
+
+  fit.cv = cv.glmnet(x1,y1,family="gaussian")
+  ind = which.min(fit.cv$cvm)
+  fits = fit.cv$glmnet.fit
+  if(ind==1){
+    sigmahat1 = sum(y2^2)/half
+  } else{
+    ind1 = which(abs(fits$beta[,ind])>0)
+    if(length(ind1)>half/2){
+      betasort = sort(abs(fits$beta[ind1,ind]),decreasing =TRUE,index.return=T)
+      ind1 = ind1[betasort$ix[1:ceiling(half/2)]]
+    }
+    xm12 = x2[,ind1]
+    pm12 = xm12%*%solve(t(xm12)%*%xm12)%*%t(xm12)
+    sigmahat1 = (sum(y2^2)-t(y2)%*%pm12%*%y2)/(half-length(ind1))
+  }
+
+  fit.cv = cv.glmnet(x2,y2,family="gaussian")
+  ind = which.min(fit.cv$cvm)
+  fits = fit.cv$glmnet.fit
+  if(ind==1){
+    sigmahat2 = sum(y1^2)/(n-half)
+  } else{
+    ind1 = which(abs(fits$beta[,ind])>0)
+    if(length(ind1)>half/2){
+      betasort = sort(abs(fits$beta[ind1,ind]),decreasing=TRUE,index.return=T)
+      ind1 = ind1[betasort$ix[1:ceiling(half/2)]]
+    }
+    xm21 = x1[,ind1]
+    pm21 = xm21%*%solve(t(xm21)%*%xm21)%*%t(xm21)
+    sigmahat2 = (sum(y1^2)-t(y1)%*%pm21%*%y1)/(n-half-length(ind1))
+  }
+  sigmahat = (sigmahat1+sigmahat2)/2
+  return(list(sigma2=sigmahat))
+}
+
+
+
+
 
 
