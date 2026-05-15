@@ -1,0 +1,33 @@
+Package: hdcrtRepro
+Type: Package
+Title: Reproducibility Materials for High-Dimensional Censored Transformation Model Tests
+Version: 0.1.0
+Authors@R: person("Anonymous", "Author", role = c("aut", "cre"), email = "anonymous@example.com")
+Description: Provides utility functions and benchmark implementations used to reproduce
+    the simulation studies and real data analysis for hypothesis testing in
+    high-dimensional censored transformation models. The package includes functions
+    for data generation under different censoring mechanisms, construction of
+    simulation settings, summary of empirical size and power, plotting of simulation
+    results, and auxiliary benchmark tests.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends:
+    R (>= 4.0.0)
+Imports:
+    stats,
+    utils,
+    graphics,
+    grDevices,
+    grid,
+    methods,
+    Matrix,
+    mnormt,
+    ggplot2,
+    latex2exp,
+    stringr,
+    glmnet,
+    RidgeVar,
+    hdcrt
